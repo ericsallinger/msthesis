@@ -1,0 +1,18 @@
+{
+    "model name": "conv_ae_9374595",
+    "learning rate": 0.001,
+    "optimizer": "Adam",
+    "latent dim": 2084,
+    "channel sizes": [
+        1,
+        64,
+        128,
+        256,
+        512
+    ],
+    "kernel size": [
+        3,
+        3
+    ],
+    "epochs": 150
+}
