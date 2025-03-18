@@ -144,13 +144,14 @@ class WorkloadFrame(Dataset):
             signal = self.features[f_idx]
             subj, label = self.labels[f_idx]
             
-            # shape (num_channels, resampled_signal_length)
-            self.X = torch.stack([self.stretch_arr(self.fill_nan_running_mean(channel), len(signal[self.resample_channel])) for channel in signal])
+            # shape (resampled_signal_length, num_channels)
+            # with this shape, each row vector contains all channel readings for one timestep
+            self.X = torch.transpose(torch.stack([self.stretch_arr(self.fill_nan_running_mean(channel), len(signal[self.resample_channel])) for channel in signal]), 0, 1)
 
             self.Y = F.one_hot(torch.tensor(label, dtype=torch.long), num_classes=4)
 
         s, f = t_step, t_step+self.context_length
-        x = self.X[:, s:f].unsqueeze(0)
+        x = self.X[s:f].unsqueeze(0)
         y = self.Y
         
         return x, y
