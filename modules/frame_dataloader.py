@@ -71,6 +71,9 @@ class WorkloadFrame(Dataset):
         # shortest signal timeframe length, context_length cannot exceed this timeframe
         min_timeframe = signal_data_truncated[resample].map(lambda x: len(x)).min()
         self.context_length = int(context_length * min_timeframe - 1)
+
+        # normalize to 0 mean and 1 std
+        signal_data_truncated = signal_data_truncated.map(lambda x: (x - np.mean(x))/np.std(x))
         
         # save as class attributes
         self.features = signal_data_truncated.values

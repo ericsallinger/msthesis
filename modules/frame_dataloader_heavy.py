@@ -72,6 +72,9 @@ class WorkloadFrame(Dataset):
         min_timeframe = signal_data_truncated[resample].map(lambda x: len(x)).min()
         self.context_length = int(context_length * min_timeframe - 1)
         
+        # normalize to 0 mean and 1 std
+        signal_data_truncated = signal_data_truncated.map(lambda x: (x - np.mean(x))/np.std(x))
+
         # save as class attributes
         self.features = signal_data_truncated.values
         self.labels = labels.values
@@ -171,7 +174,8 @@ if __name__ == '__main__':
     # 2nd output: the sliding window extracted from that signal data tensor
     print(
         frames.X[0].shape,
-        frames.__getitem__(4)[0].shape
+        frames.__getitem__(4)[0].shape,
+        frames.X[0]
     ) 
 
     # example of resampling an hbo signal to the frequency of the temp signal
