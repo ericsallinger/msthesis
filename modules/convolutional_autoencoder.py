@@ -22,8 +22,8 @@ class ConvAE(nn.Module):
         self.log_stats = False
         
         # only accept odd kernel sizes to preserve tensor shape with padding
-        if any(d % 2 == 0 for d in kernel):
-            raise ValueError('Only odd kernel sizes accepted')
+        # if any(d % 2 == 0 for d in kernel):
+        #     raise ValueError('Only odd kernel sizes accepted')
         
         # kernel size and padding
         self.k = kernel
