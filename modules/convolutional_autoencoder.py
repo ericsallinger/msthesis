@@ -148,7 +148,7 @@ if __name__ == "__main__":
     optimizer = optim.Adam(conv_ae.parameters(), lr=1e-3)
 
     # model requires batch and channel dimension
-    batch_size = 1
+    batch_size = 5
     num_channels = 1
     frame_length = 30
     input_dim = 78
