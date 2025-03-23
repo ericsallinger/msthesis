@@ -1,0 +1,13 @@
+{
+    "latent_dim": 1024,
+    "conv_blocks": [
+        1,
+        64,
+        128
+    ],
+    "kernel": [
+        3,
+        2
+    ],
+    "id": null
+}

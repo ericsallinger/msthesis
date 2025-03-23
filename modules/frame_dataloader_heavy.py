@@ -10,9 +10,9 @@ class WorkloadFrame(Dataset):
         if not (0.0 < context_length <= 1.0):
             raise ValueError(f'0.0 < context_length <= 1.0, got {context_length} instead')
 
-        file = {'cog':'/cog_data.pkl',
-                'phys':'/phys_data.pkl',
-                'tot':'/tot_data.pkl'}[group]
+        file = {'cog':'\\cog_data.pkl',
+                'phys':'\\phys_data.pkl',
+                'tot':'\\tot_data.pkl'}[group]
         
         # mapping of signal channel names to numpy columns
         c = {'hr':0, 'hbo':1, 'eda':2, 'hrv':3, 'temp':4}
