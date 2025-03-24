@@ -119,19 +119,6 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath):
         log = []
         print(f'No existing log data found for {model_name} in {model_filepath}. Creating new one')
 
-    # activation statistics
-    activation_stats = {}
-
-    def forward_hook(module, input, output):
-        if conv_ae.log_stats:
-            activation_stats[module] = {
-                "mean": output.mean().item(),
-                "std": output.std().item()
-        }
-
-    for name, layer in conv_ae.named_modules(remove_duplicate=True):
-        layer.register_forward_hook(forward_hook)
-
     print(f'Ready to begin training {device, model_filepath, model_name}')
 
     # ------------ TRAINING PARAMETERS -----------------
@@ -230,33 +217,12 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath):
 
             writer.flush()
 
-    # save model weights and training statistics
+    # save model weights 
     torch.save(conv_ae.state_dict(), model_filepath + model_name + '.pth')
     loss_data = pd.DataFrame(log)
     loss_data.to_csv(model_filepath+model_name+'.csv', index=False)
 
     writer.close()
-
-    # save activation stats
-    sample_input = frames_trainset.__getitem__(0)[0].unsqueeze(0).to(device)
-
-    # set log_stats flag to true to log activation statistics for each module
-    conv_ae.log_stats = True
-    with torch.no_grad():
-        sample_output = conv_ae(sample_input)
-    conv_ae.log_stats = False
-    s = []
-    m = []
-    for module, stats in activation_stats.items():
-        s.append(stats['std'])
-        m.append(stats['mean'])
-
-    activation_map = {}
-    activation_map['std'] = s
-    activation_map['mean'] = m
-
-    with open(model_filepath+model_name+'_activations.json', 'w') as file:
-        json.dump(activation_map, file, indent=4)
 
     print(f'Model trained for {e} epochs. Saved data for {model_name}')
 
