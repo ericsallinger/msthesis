@@ -11,6 +11,7 @@ from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR
 
 import csv
 from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
 
 # modules directory
 from frame_dataloader_heavy import WorkloadFrame
@@ -95,6 +96,9 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath):
 
     model_name = f'conv_ae_ndim{dim}_convblocks{len(conv_blocks)}_kernel{k}_id{id}'
 
+    # create a tensorboard writer object that logs to /tensorboard_logs subdir
+    writer = SummaryWriter(log_dir=os.path.join(model_filepath, "tensorboard_logs", model_name))
+
     # save config file
     with open(model_filepath+model_name+'.json', 'w') as file:
         json.dump(config, file, indent=4)
@@ -148,18 +152,44 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath):
     for e in range(epochs):
         conv_ae.train()
         train_loss = 0.0
-        for data, _ in tqdm(frames_trainloader, desc=f"Epoch {e+1}/{epochs} [Training]", leave=False):
+        for data, target in tqdm(frames_trainloader, desc=f"Epoch {e+1}/{epochs} [Training]", leave=False):
             data = data.to(device)
 
             optimizer.zero_grad()
-            recon_data = conv_ae(data)
+            encoded = conv_ae.encode(data)
+            recon_data = conv_ae.decode(encoded)
             loss = loss_function(recon_data, data, red='mean')
             loss.backward()
             optimizer.step()
 
             train_loss += loss.item()
+            writer.add_scalar("Loss/Train", loss.item(), e)
+
         
         scheduler.step()
+
+        writer.add_scalar('Learning Rate', scheduler.get_last_lr()[0], e)
+        
+        # save embeddings for t-SNE visualization
+        writer.add_embedding(
+            encoded,
+            metadata=target,
+            tag=f"Embeddings_epoch_{e}",
+            global_step=e
+        )
+
+        if e % 5 == 0:
+            # log parameter update to parameter magnitude ratio
+            for name, param in conv_ae.named_parameters():
+                if param.grad is not None:
+                    param_norm = torch.norm(param).item()
+                    update_norm = torch.norm(param.grad * optimizer.param_groups[0]['lr']).item()
+                    ratio = update_norm / (param_norm + 1e-10) 
+                    writer.add_scalar(f"Update-to-Param/{name}", ratio, e)
+
+                    writer.add_histogram(f"Weights/{name}", param, e)
+                    writer.add_histogram(f"Gradients/{name}", param.grad, e)
+
 
         conv_ae.eval()
         val_loss = 0.0
@@ -170,6 +200,8 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath):
                 loss = loss_function(recon_data, data, red='mean')
 
                 val_loss += loss.item()
+                writer.add_scalar("Loss/Validation", loss.item(), e)
+    
 
         # average losses
         train_loss /= len(frames_trainloader)
@@ -196,10 +228,14 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath):
             loss_data = pd.DataFrame(log)
             loss_data.to_csv(model_filepath+model_name+'.csv', index=False)
 
+            writer.flush()
+
     # save model weights and training statistics
     torch.save(conv_ae.state_dict(), model_filepath + model_name + '.pth')
     loss_data = pd.DataFrame(log)
     loss_data.to_csv(model_filepath+model_name+'.csv', index=False)
+
+    writer.close()
 
     # save activation stats
     sample_input = frames_trainset.__getitem__(0)[0].unsqueeze(0).to(device)
@@ -236,3 +272,5 @@ if  __name__ == '__main__':
 
     for config in configs:
         train_and_save_conv_ae(config=config, num_epochs=training_epochs, save_filepath=save_filepath)
+
+    # then run: %tensorboard --logdir=os.path.join(model_filepath, "tensorboard_logs", model_name)
