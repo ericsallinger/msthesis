@@ -99,6 +99,9 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath):
     # create a tensorboard writer object that logs to /tensorboard_logs subdir
     writer = SummaryWriter(log_dir=os.path.join(model_filepath, "tensorboard_logs", model_name))
 
+    # determine global step (total number of epochs across all runs)
+    global_step = len(pd.read_csv(os.path.join(model_filepath, model_name+'.csv')))
+
     # save config file
     with open(model_filepath+model_name+'.json', 'w') as file:
         json.dump(config, file, indent=4)
@@ -150,19 +153,19 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath):
             optimizer.step()
 
             train_loss += loss.item()
-            writer.add_scalar("Loss/Train", loss.item(), e)
+            writer.add_scalar("Loss/Train", loss.item(), global_step+e)
 
         
         scheduler.step()
 
-        writer.add_scalar('Learning Rate', scheduler.get_last_lr()[0], e)
+        writer.add_scalar('Learning Rate', scheduler.get_last_lr()[0], global_step+e)
         
         # save embeddings for t-SNE visualization
         writer.add_embedding(
             encoded,
             metadata=target,
             tag=f"Embeddings_epoch_{e}",
-            global_step=e
+            global_step=global_step+e
         )
 
         if e % 5 == 0:
@@ -172,10 +175,10 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath):
                     param_norm = torch.norm(param).item()
                     update_norm = torch.norm(param.grad * optimizer.param_groups[0]['lr']).item()
                     ratio = update_norm / (param_norm + 1e-10) 
-                    writer.add_scalar(f"Update-to-Param/{name}", ratio, e)
+                    writer.add_scalar(f"Update-to-Param/{name}", ratio, global_step+e)
 
-                    writer.add_histogram(f"Weights/{name}", param, e)
-                    writer.add_histogram(f"Gradients/{name}", param.grad, e)
+                    writer.add_histogram(f"Weights/{name}", param, global_step+e)
+                    writer.add_histogram(f"Gradients/{name}", param.grad, global_step+e)
 
 
         conv_ae.eval()
@@ -187,7 +190,7 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath):
                 loss = loss_function(recon_data, data, red='mean')
 
                 val_loss += loss.item()
-                writer.add_scalar("Loss/Validation", loss.item(), e)
+                writer.add_scalar("Loss/Validation", loss.item(), global_step+e)
     
 
         # average losses
