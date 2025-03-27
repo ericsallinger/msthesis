@@ -99,8 +99,6 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath):
     # create a tensorboard writer object that logs to /tensorboard_logs subdir
     writer = SummaryWriter(log_dir=os.path.join(model_filepath, "tensorboard_logs", model_name))
 
-    # determine global step (total number of epochs across all runs)
-    global_step = len(pd.read_csv(os.path.join(model_filepath, model_name+'.csv')))
 
     # save config file
     with open(model_filepath+model_name+'.json', 'w') as file:
@@ -122,7 +120,13 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath):
         log = []
         print(f'No existing log data found for {model_name} in {model_filepath}. Creating new one')
 
-    print(f'Ready to begin training {device, model_filepath, model_name}')
+    # determine global step for tensorboard logs (total number of epochs across all runs)
+    if model_name+'.csv' in os.listdir(model_filepath):
+        global_step = len(pd.read_csv(os.path.join(model_filepath, model_name+'.csv')))
+    else:
+        global_step = 0
+
+    print(f'Ready to begin training from {global_step} epoch. \n {device, model_filepath, model_name}')
 
     # ------------ TRAINING PARAMETERS -----------------
 
@@ -140,6 +144,11 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath):
     # ---------------- TRAINING LOOP -------------------
 
     for e in range(epochs):
+
+        # log data
+        embeddings = []
+        labels = []
+
         conv_ae.train()
         train_loss = 0.0
         for data, target in tqdm(frames_trainloader, desc=f"Epoch {e+1}/{epochs} [Training]", leave=False):
@@ -155,31 +164,40 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath):
             train_loss += loss.item()
             writer.add_scalar("Loss/Train", loss.item(), global_step+e)
 
-        
+            if e % 50 == 0:
+                # (b_size, embed_dim) for each minibatch
+                embeddings.append(encoded)
+                # (b_size, num_classes) for each minibatch
+                labels.append(target)
+
         scheduler.step()
 
         writer.add_scalar('Learning Rate', scheduler.get_last_lr()[0], global_step+e)
         
-        # save embeddings for t-SNE visualization
-        writer.add_embedding(
-            encoded,
-            metadata=target,
-            tag=f"Embeddings_epoch_{e}",
-            global_step=global_step+e
-        )
-
-        if e % 5 == 0:
-            # log parameter update to parameter magnitude ratio
+        # log activation data at each re-initialization
+        if e == 0:
             for name, param in conv_ae.named_parameters():
                 if param.grad is not None:
+
+                    # log parameter update to parameter magnitude ratio
                     param_norm = torch.norm(param).item()
                     update_norm = torch.norm(param.grad * optimizer.param_groups[0]['lr']).item()
                     ratio = update_norm / (param_norm + 1e-10) 
                     writer.add_scalar(f"Update-to-Param/{name}", ratio, global_step+e)
 
+                    # weight and gradient distributions
                     writer.add_histogram(f"Weights/{name}", param, global_step+e)
                     writer.add_histogram(f"Gradients/{name}", param.grad, global_step+e)
 
+        # save embeddings for t-SNE visualization
+        if e % 50 == 0:
+            writer.add_embedding(
+                # concatentate each minibatche's 2d tensor
+                torch.cat(embeddings, dim=0),
+                metadata=torch.argmax(torch.cat(labels, dim=0), dim=1),
+                tag=f"Embeddings_epoch_{e}",
+                global_step=global_step+e
+            )
 
         conv_ae.eval()
         val_loss = 0.0
@@ -225,6 +243,7 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath):
     loss_data = pd.DataFrame(log)
     loss_data.to_csv(model_filepath+model_name+'.csv', index=False)
 
+    writer.flush()
     writer.close()
 
     print(f'Model trained for {e} epochs. Saved data for {model_name}')
@@ -232,8 +251,9 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath):
 if  __name__ == '__main__':
 
     # run different configs
+    # tensor from dataloader has shape (frame_length, num_channels). Padding applied
     configs = [
-        {'latent_dim': 1024, 'conv_blocks': [1, 64, 128], 'kernel': (3, 2), 'id': None}
+        {'latent_dim': 1024, 'conv_blocks': [1, 64, 128], 'kernel': (3, 2), 'id': 'TEST'}
     ]
 
     save_filepath = "saved_models\\convolutional_autoencoder\\"

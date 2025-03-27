@@ -87,7 +87,7 @@ class WorkloadFrame(Dataset):
         self.cur_f_idx = None
 
         for f_idx, signal in enumerate(self.features):
-
+            # (num_channels, signal length) > (signal_length, num_channels)
             self.X.append(torch.transpose(torch.stack([self.stretch_arr(self.fill_nan_running_mean(channel), len(signal[self.resample_channel])) for channel in signal]), 0, 1))
             self.Y.append(F.one_hot(torch.tensor(self.labels[f_idx][1], dtype=torch.long), num_classes=4))
 
@@ -147,6 +147,8 @@ class WorkloadFrame(Dataset):
         f_idx, t_step = self.index_map[idx]
 
         s, f = t_step, t_step+self.context_length
+
+        # tensor at f_idx has shape (signal_length, num_channels); is indexed across dimension 0
         x = self.X[f_idx][s:f].unsqueeze(0)
         y = self.Y[f_idx]
         

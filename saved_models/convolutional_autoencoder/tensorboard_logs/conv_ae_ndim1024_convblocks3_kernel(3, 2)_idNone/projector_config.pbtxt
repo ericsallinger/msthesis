@@ -1,5 +1,0 @@
-embeddings {
-  tensor_name: "Embeddings_epoch_0:00002"
-  metadata_path: "00002/Embeddings_epoch_0\\metadata.tsv"
-  tensor_path: "00002/Embeddings_epoch_0\\tensors.tsv"
-}
