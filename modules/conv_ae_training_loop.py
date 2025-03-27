@@ -248,12 +248,14 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath):
 
     print(f'Model trained for {e} epochs. Saved data for {model_name}')
 
+    return val_loss
+
 if  __name__ == '__main__':
 
     # run different configs
     # tensor from dataloader has shape (frame_length, num_channels). Padding applied
     configs = [
-        {'latent_dim': 1024, 'conv_blocks': [1, 64, 128], 'kernel': (3, 2), 'id': 'TEST'}
+        {'latent_dim': 128, 'conv_blocks': [1, 64], 'kernel': (3, 2), 'id': 'TEST'}
     ]
 
     save_filepath = "saved_models\\convolutional_autoencoder\\"
