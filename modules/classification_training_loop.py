@@ -2,6 +2,7 @@ import torch
 import os
 import pandas as pd
 import json
+import numpy as np
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -20,7 +21,7 @@ from classification_head import ClassificationHead
 import utils
 
 
-def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size=64, ):
+def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size=64):
     """
     Trains a convolutional autoencoder model of given parameters with:
         initial lr = 0.01
@@ -141,12 +142,12 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
     # ------------ TRAINING PARAMETERS -----------------
 
     epochs = num_epochs
-    patience = 10
+    patience = 20
     best_val_loss = float('inf')
     epochs_without_improvement = 0
     optimizer = optim.Adam(conv_e.parameters(), lr=1e-2)
 
-    step_lr = StepLR(optimizer, step_size=20, gamma=0.1)
+    step_lr = StepLR(optimizer, step_size=30, gamma=0.1)
     cos_lr = CosineAnnealingLR(optimizer, T_max=epochs//10, eta_min=0)
 
     scheduler = step_lr
@@ -240,11 +241,11 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
         else:
             epochs_without_improvement += 1
 
-        if epochs_without_improvement >= patience:
-            epochs_without_improvement = 0
-            best_val_loss = 0.0
-            print(f'Plateaued at {e+1}, switching to cosine annealing ')
-            scheduler = cos_lr
+        # if epochs_without_improvement >= patience:
+        #     epochs_without_improvement = 0
+        #     best_val_loss = 0.0
+        #     print(f'Plateaued at {e+1}, switching to cosine annealing ')
+        #     scheduler = cos_lr
 
         if e % 5 == 0:
             torch.save(conv_e.state_dict(), model_filepath + model_name + '.pth')
@@ -252,6 +253,19 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
             loss_data.to_csv(model_filepath+model_name+'.csv', index=False)
 
             writer.flush()
+
+            # past_train_loss = loss_data['Training Loss'][-patience].values
+            # past_val_loss = loss_data['Validation Loss'][-patience:].values
+            # local_x = np.arange(len(past_train_loss))
+
+            # train_grad = np.gradient(past_train_loss, local_x)
+            # val_grad = np.gradient(past_val_loss, local_x)
+
+            # if np.mean(train_grad)/np.mean(val_grad) > 2:
+            #     print(f'Potential overfitting detected at epoch {e}. Breaking off training')
+            #     break
+
+
 
     # save model weights 
     torch.save(conv_e.state_dict(), model_filepath + model_name + '.pth')
