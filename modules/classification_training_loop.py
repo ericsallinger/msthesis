@@ -153,6 +153,7 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
     scheduler = step_lr
 
     # ---------------- TRAINING LOOP -------------------
+    evals = len(frames_trainloader)
 
     for e in range(epochs):
 
@@ -228,8 +229,8 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
     
 
         # average losses
-        train_loss /= len(frames_trainloader)
-        val_loss /= len(frames_trainloader)
+        train_loss /= evals
+        val_loss /= evals
 
         #print(f"Epoch {e+1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
 
@@ -265,6 +266,27 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
             #     print(f'Potential overfitting detected at epoch {e}. Breaking off training')
             #     break
 
+    # test model
+    conv_e.eval()
+    classifier.eval()
+    test_loss = 0.0
+    truepos = 0.0
+    with torch.no_grad():
+        for data, target in tqdm(frames_trainloader, desc=f"Epoch {e+1}/{epochs} [Testing]", leave=False):
+            data = data.to(device)
+            target = target.to(device)
+            encoded = conv_e.encode(data)
+            classification = classifier(encoded)
+            loss = loss_function(classification, target.float())
+
+            if torch.argmax(classification) == torch.argmax(target):
+                 truepos += 1
+
+            test_loss += loss.item()
+            writer.add_scalar("Loss/Validation", loss.item(), global_step+e)
+
+    accuracy = truepos / evals
+    test_loss /= evals
 
 
     # save model weights 
@@ -277,7 +299,7 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
 
     print(f'Model trained for {e} epochs. Saved data for {model_name}')
 
-    return val_loss
+    return accuracy
 
 if  __name__ == '__main__':
 
