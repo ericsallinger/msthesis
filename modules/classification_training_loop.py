@@ -16,10 +16,11 @@ from torch.utils.tensorboard import SummaryWriter
 # modules directory
 from frame_dataloader_heavy import WorkloadFrame
 from convolutional_autoencoder import ConvAE
+from classification_head import ClassificationHead
 import utils
 
 
-def train_and_save_conv_ae(config, num_epochs, save_filepath, batch_size=64, ):
+def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size=64, ):
     """
     Trains a convolutional autoencoder model of given parameters with:
         initial lr = 0.01
@@ -31,6 +32,7 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath, batch_size=64, ):
     """
     
     ldim=config['latent_dim']
+    hdim=config['hidden_dim']
     conv_blocks=config['conv_blocks']
     k=config['kernel']
     id=config['id']
@@ -71,22 +73,29 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath, batch_size=64, ):
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    conv_ae = ConvAE(latent_dim=ldim, channels=conv_blocks, kernel=k)
-    conv_ae.to(device)
+    conv_e = ConvAE(latent_dim=ldim, channels=conv_blocks, kernel=k)
+    conv_e.to(device)
+
+    classifier = ClassificationHead(input_dim=ldim, hidden_dim=hdim, num_classes=4)
+    classifier.to(device)
 
     # initialise and test model architecture with forward pass
     try:
         with torch.no_grad():
-            sample_input = frames_trainset.__getitem__(0)[0].unsqueeze(0).to(device)
-            sample_output = conv_ae(sample_input)
-            loss = F.mse_loss(sample_input, sample_output, reduction='mean')
-            print(f'Modell initialised. Shapes: \n {sample_input.shape} {sample_output.shape} {loss.item()}')
+            sample_x, sample_y = frames_trainset.__getitem__(0)[0].unsqueeze(0).to(device), frames_trainset.__getitem__(0)[1].to(device)
+            sample_encoding = conv_e(sample_x)
+            sample_classification = classifier(sample_encoding)
+
+            # compares predicted and ground truth distributions
+            loss = F.cross_entropy(sample_classification, sample_y)
+
+            print(f'Modell initialised. Shapes: \n {sample_x.shape} {sample_y} {loss.item()}')
 
     except Exception as e:
         print(f'Exception occured: \n {e} \n Possibly caused by invalid parameters')
 
-    def loss_function(y, y_hat, red='mean'):
-        return F.mse_loss(y, y_hat, reduction=red)
+    def loss_function(y_hat, y):
+        return F.cross_entropy(y_hat, y)
 
     # ------------ HANDLE METADATA ----------------------
 
@@ -94,20 +103,20 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath, batch_size=64, ):
 
     model_filepath = save_filepath
 
-    model_name = f'conv_ae_ndim{ldim}_convblocks{len(conv_blocks)}_kernel{k}_id{id}'
+    model_name = f'conv_classifier_ndim{ldim}_convblocks{len(conv_blocks)}_hdim{hdim}_kernel{k}_id{id}'
 
     # create a tensorboard writer object that logs to /tensorboard_logs subdir
     writer = SummaryWriter(log_dir=os.path.join(model_filepath, "tensorboard_logs", model_name))
 
 
     # save config file
-    config['parameters'] = utils.num_parameters(conv_ae)
+    config['parameters'] = utils.num_parameters(conv_e)
     with open(model_filepath+model_name+'.json', 'w') as file:
         json.dump(config, file, indent=4)
 
     # check for existing state dicts
     if f'{model_name}.pth' in os.listdir(model_filepath):
-        conv_ae.load_state_dict(torch.load(model_filepath+model_name+'.pth'))
+        conv_e.load_state_dict(torch.load(model_filepath+model_name+'.pth'))
         print(f'Loaded state dict for {model_name}')
     else:
         print(f'No saved weights found for {model_name} in {model_filepath}')
@@ -135,7 +144,7 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath, batch_size=64, ):
     patience = 10
     best_val_loss = float('inf')
     epochs_without_improvement = 0
-    optimizer = optim.Adam(conv_ae.parameters(), lr=1e-2)
+    optimizer = optim.Adam(conv_e.parameters(), lr=1e-2)
 
     step_lr = StepLR(optimizer, step_size=20, gamma=0.1)
     cos_lr = CosineAnnealingLR(optimizer, T_max=epochs//10, eta_min=0)
@@ -150,15 +159,17 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath, batch_size=64, ):
         embeddings = []
         labels = []
 
-        conv_ae.train()
+        conv_e.train()
+        classifier.train()
         train_loss = 0.0
         for data, target in tqdm(frames_trainloader, desc=f"Epoch {e+1}/{epochs} [Training]", leave=False):
             data = data.to(device)
+            target = target.to(device)
 
             optimizer.zero_grad()
-            encoded = conv_ae.encode(data)
-            recon_data = conv_ae.decode(encoded)
-            loss = loss_function(recon_data, data, red='mean')
+            encoded = conv_e.encode(data)
+            classification = classifier(encoded)
+            loss = loss_function(classification, target.float())
             loss.backward()
             optimizer.step()
 
@@ -177,7 +188,7 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath, batch_size=64, ):
         
         # log activation data at each re-initialization
         if e == 0:
-            for name, param in conv_ae.named_parameters():
+            for name, param in conv_e.named_parameters():
                 if param.grad is not None:
 
                     # log parameter update to parameter magnitude ratio
@@ -200,13 +211,16 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath, batch_size=64, ):
                 global_step=global_step+e
             )
 
-        conv_ae.eval()
+        conv_e.eval()
+        classifier.eval()
         val_loss = 0.0
         with torch.no_grad():
-            for data, _ in tqdm(frames_trainloader, desc=f"Epoch {e+1}/{epochs} [Validation]", leave=False):
+            for data, target in tqdm(frames_trainloader, desc=f"Epoch {e+1}/{epochs} [Validation]", leave=False):
                 data = data.to(device)
-                recon_data = conv_ae(data)
-                loss = loss_function(recon_data, data, red='mean')
+                target = target.to(device)
+                encoded = conv_e.encode(data)
+                classification = classifier(encoded)
+                loss = loss_function(classification, target.float())
 
                 val_loss += loss.item()
                 writer.add_scalar("Loss/Validation", loss.item(), global_step+e)
@@ -233,14 +247,14 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath, batch_size=64, ):
             scheduler = cos_lr
 
         if e % 5 == 0:
-            torch.save(conv_ae.state_dict(), model_filepath + model_name + '.pth')
+            torch.save(conv_e.state_dict(), model_filepath + model_name + '.pth')
             loss_data = pd.DataFrame(log)
             loss_data.to_csv(model_filepath+model_name+'.csv', index=False)
 
             writer.flush()
 
     # save model weights 
-    torch.save(conv_ae.state_dict(), model_filepath + model_name + '.pth')
+    torch.save(conv_e.state_dict(), model_filepath + model_name + '.pth')
     loss_data = pd.DataFrame(log)
     loss_data.to_csv(model_filepath+model_name+'.csv', index=False)
 
@@ -256,13 +270,13 @@ if  __name__ == '__main__':
     # run different configs
     # tensor from dataloader has shape (frame_length, num_channels). Padding applied
     configs = [
-        {'latent_dim': 128, 'conv_blocks': [1, 64], 'kernel': (3, 2), 'id': 'TEST'}
+        {'latent_dim': 32, 'conv_blocks': [1, 16], 'hidden_dim':16, 'kernel': (3, 2), 'id': 'TEST'}
     ]
 
-    save_filepath = "saved_models\\convolutional_autoencoder\\"
+    save_filepath = "saved_models\\classifier\\"
     training_epochs = 1
 
     for config in configs:
-        train_and_save_conv_ae(config=config, num_epochs=training_epochs, save_filepath=save_filepath)
+        train_and_save_conv_classifier(config=config, num_epochs=training_epochs, save_filepath=save_filepath)
 
     # then run: %tensorboard --logdir=os.path.join(model_filepath, "tensorboard_logs", model_name)

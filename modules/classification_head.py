@@ -7,17 +7,14 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 class ClassificationHead(nn.Module):
-    def __init__(self, input_dim, num_classes):
+    def __init__(self, input_dim, hidden_dim, num_classes):
         super().__init__()
 
         self.hidden_layers = nn.Sequential(
-            nn.Linear(input_dim, 2048),
-            nn.BatchNorm1d(2048),
+            nn.Linear(input_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
-            nn.Linear(2048, 512),
-            nn.BatchNorm1d(512),
-            nn.ReLU(),
-            nn.Linear(512, num_classes),
+            nn.Linear(hidden_dim, num_classes),
             nn.Softmax(dim=1)
         )
 
@@ -34,7 +31,7 @@ if __name__ == '__main__':
     y = F.one_hot(torch.randint(0, 3, (batch_size,)), num_classes=4).float()
 
     # define input dimension and number of classes to classify
-    c = ClassificationHead(input_dim=2048, num_classes=4)
+    c = ClassificationHead(input_dim=2048, hidden_dim=512, num_classes=4)
 
     # vector containing probabilities
     y_hat = c(x)
@@ -42,4 +39,4 @@ if __name__ == '__main__':
     # compares predicted and ground truth distributions
     loss = F.cross_entropy(y_hat, y)
 
-    print(loss)
+    print(loss, type(loss), loss.dtype)
