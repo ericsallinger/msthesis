@@ -19,7 +19,7 @@ from convolutional_autoencoder import ConvAE
 import utils
 
 
-def train_and_save_conv_ae(config, num_epochs, save_filepath):
+def train_and_save_conv_ae(config, num_epochs, save_filepath, batch_size=64, ):
     """
     Trains a convolutional autoencoder model of given parameters with:
         initial lr = 0.01
@@ -38,7 +38,7 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath):
     # --------------- LOAD DATASET -----------------
 
     # retrieve 1-second frames from csv 
-    b_size = 64
+    b_size = batch_size
     n_workers = utils.optimal_num_workers()
 
     # directory to .mat files
@@ -101,6 +101,7 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath):
 
 
     # save config file
+    config['parameters'] = utils.num_parameters(conv_ae)
     with open(model_filepath+model_name+'.json', 'w') as file:
         json.dump(config, file, indent=4)
 
@@ -134,9 +135,9 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath):
     patience = 10
     best_val_loss = float('inf')
     epochs_without_improvement = 0
-    optimizer = optim.Adam(conv_ae.parameters(), lr=1e-3)
+    optimizer = optim.Adam(conv_ae.parameters(), lr=1e-2)
 
-    step_lr = StepLR(optimizer, step_size=50, gamma=0.1)
+    step_lr = StepLR(optimizer, step_size=20, gamma=0.1)
     cos_lr = CosineAnnealingLR(optimizer, T_max=epochs//10, eta_min=0)
 
     scheduler = step_lr
@@ -186,8 +187,8 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath):
                     writer.add_scalar(f"Update-to-Param/{name}", ratio, global_step+e)
 
                     # weight and gradient distributions
-                    writer.add_histogram(f"Weights/{name}", param, global_step+e)
-                    writer.add_histogram(f"Gradients/{name}", param.grad, global_step+e)
+                    # writer.add_histogram(f"Weights/{name}", param, global_step+e)
+                    # writer.add_histogram(f"Gradients/{name}", param.grad, global_step+e)
 
         # save embeddings for t-SNE visualization
         if e % 50 == 0:
@@ -215,7 +216,7 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath):
         train_loss /= len(frames_trainloader)
         val_loss /= len(frames_trainloader)
 
-        print(f"Epoch {e+1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
+        #print(f"Epoch {e+1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
 
         log.append({'Epoch':e+1, 'Training Loss':round(train_loss, 4), 'Validation Loss':round(val_loss, 4), 'Learning Rate':scheduler.get_last_lr()[0]})
 
