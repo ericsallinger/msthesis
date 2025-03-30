@@ -203,7 +203,7 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath, batch_size=64, ):
         conv_ae.eval()
         val_loss = 0.0
         with torch.no_grad():
-            for data, _ in tqdm(frames_trainloader, desc=f"Epoch {e+1}/{epochs} [Validation]", leave=False):
+            for data, _ in tqdm(frames_valloader, desc=f"Epoch {e+1}/{epochs} [Validation]", leave=False):
                 data = data.to(device)
                 recon_data = conv_ae(data)
                 loss = loss_function(recon_data, data, red='mean')
@@ -270,7 +270,7 @@ if  __name__ == '__main__':
         {'latent_dim': 128, 'conv_blocks': [1, 64], 'kernel': (3, 2), 'id': 'TEST'}
     ]
 
-    save_filepath = "saved_models\\convolutional_autoencoder\\"
+    save_filepath = "saved_models\\convolutional_autoencoder\\TESTS"
     training_epochs = 1
 
     for config in configs:

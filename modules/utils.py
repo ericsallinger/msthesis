@@ -1,6 +1,10 @@
 import os
 import psutil  # To check system memory usage
 import json
+import numpy as np
+import skopt # skopt.space.Space, skopt.space.Integer etc...
+
+# TODO: add class decorator for showing/hiding model print statements
 
 def optimal_num_workers():
     """Dynamically selects the optimal number of workers based on CPU & RAM."""
@@ -26,6 +30,10 @@ class NumpyEncoder(json.JSONEncoder):
             return obj.item()
         if isinstance(obj, bytes):  # Convert bytes to string
             return obj.decode()
+        # if isinstance(obj, skopt.space.Integer) or isinstance(obj, skopt.space.Real):
+        #     return {d:(r.low, r.high, r.name, str(r.dtype)) for d, r in enumerate(obj)}
+        # if isinstance(obj, skopt.space.Categorical):
+        #     return {d:(r.categories, r.name) for d, r in enumerate(obj)}
         return super().default(obj)
 
 def make_serializable_dict(result):

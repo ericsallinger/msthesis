@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
-from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR
+from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR, ReduceLROnPlateau
 
 import csv
 from tqdm import tqdm
@@ -86,7 +86,7 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
             sample_classification = classifier(sample_x)
 
             # compares predicted and ground truth distributions
-            loss = F.cross_entropy(sample_classification, sample_y)
+            loss = F.cross_entropy(sample_classification, sample_y.float())
 
             print(f'Modell initialised. Shapes: \n {sample_x.shape} {sample_y} {loss.item()}')
 
@@ -102,7 +102,7 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
 
     model_filepath = save_filepath
 
-    model_name = f'conv_classifier_ndim{ldim}_convblocks{len(conv_blocks)}_hdim{hdim}_kernel{k}_id{id}'
+    model_name = f'conv_classifier_ldim{ldim}_convblocks{len(conv_blocks)}_hdim{hdim}_kernel{k}_id{id}'
 
     # create a tensorboard writer object that logs to /tensorboard_logs subdir
     writer = SummaryWriter(log_dir=os.path.join(model_filepath, "tensorboard_logs", model_name))
@@ -145,10 +145,11 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
     epochs_without_improvement = 0
     optimizer = optim.Adam(classifier.parameters(), lr=1e-2)
 
-    step_lr = StepLR(optimizer, step_size=40, gamma=0.1)
-    cos_lr = CosineAnnealingLR(optimizer, T_max=epochs//10, eta_min=0)
+    reduce_on_plateau = ReduceLROnPlateau(optimizer, cooldown=10, min_lr=1e-5)
+    # step_lr = StepLR(optimizer, step_size=40, gamma=0.1)
+    # cos_lr = CosineAnnealingLR(optimizer, T_max=epochs//10, eta_min=0)
 
-    scheduler = step_lr
+    scheduler = reduce_on_plateau
 
     # ---------------- TRAINING LOOP -------------------
     evals = len(frames_trainloader)
@@ -181,7 +182,7 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
                 # (b_size, num_classes) for each minibatch
                 labels.append(target)
 
-        scheduler.step()
+        scheduler.step(train_loss)
 
         writer.add_scalar('Learning Rate', scheduler.get_last_lr()[0], global_step+e)
         
@@ -212,12 +213,16 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
 
         classifier.eval()
         val_loss = 0.0
+        truepos = 0.0
         with torch.no_grad():
-            for data, target in tqdm(frames_trainloader, desc=f"Epoch {e+1}/{epochs} [Validation]", leave=False):
+            for data, target in tqdm(frames_valloader, desc=f"Epoch {e+1}/{epochs} [Validation]", leave=False):
                 data = data.to(device)
                 target = target.to(device)
                 classification = classifier(data)
                 loss = loss_function(classification, target.float())
+
+                if torch.argmax(classification) == torch.argmax(target):
+                    truepos += 1
 
                 val_loss += loss.item()
                 writer.add_scalar("Loss/Validation", loss.item(), global_step+e)
@@ -226,6 +231,7 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
         # average losses
         train_loss /= evals
         val_loss /= evals
+        accuracy = truepos / evals
 
         #print(f"Epoch {e+1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
 
@@ -261,27 +267,6 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
             #     print(f'Potential overfitting detected at epoch {e}. Breaking off training')
             #     break
 
-    # test model
-    classifier.eval()
-    test_loss = 0.0
-    truepos = 0.0
-    with torch.no_grad():
-        for data, target in tqdm(frames_trainloader, desc=f"Epoch {e+1}/{epochs} [Testing]", leave=False):
-            data = data.to(device)
-            target = target.to(device)
-            classification = classifier(data)
-            loss = loss_function(classification, target.float())
-
-            if torch.argmax(classification) == torch.argmax(target):
-                 truepos += 1
-
-            test_loss += loss.item()
-            writer.add_scalar("Loss/Validation", loss.item(), global_step+e)
-
-    accuracy = truepos / evals
-    test_loss /= evals
-
-
     # save model weights 
     torch.save(classifier.state_dict(), model_filepath + model_name + '.pth')
     loss_data = pd.DataFrame(log)
@@ -302,7 +287,7 @@ if  __name__ == '__main__':
         {'latent_dim': 32, 'conv_blocks': [1, 16], 'hidden_dim':16, 'kernel': (3, 2), 'id': 'TEST'}
     ]
 
-    save_filepath = "saved_models\\classifier\\"
+    save_filepath = "saved_models\\classifier\\TESTS\\"
     training_epochs = 1
 
     for config in configs:
