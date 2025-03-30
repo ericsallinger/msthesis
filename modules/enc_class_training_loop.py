@@ -16,8 +16,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 # modules directory
 from frame_dataloader_heavy import WorkloadFrame
-from convolutional_autoencoder import ConvAE
-from classification_head import ClassificationHead
+from encoder_classifier import ConvClassifier
 import utils
 
 
@@ -70,22 +69,21 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
     frames_valloader = DataLoader(frames_valset, batch_size=b_size, num_workers=n_workers,pin_memory=torch.cuda.is_available(),persistent_workers=True, prefetch_factor=4)
     frames_testloader = DataLoader(frames_testset, batch_size=b_size, num_workers=n_workers,pin_memory=torch.cuda.is_available(),persistent_workers=True, prefetch_factor=4)
 
+    input_shape = tuple(frames_trainset.__getitem__(0)[0].shape[-2:])
+
     # ---------- LOAD MODEL ARCHITECTURE -------------
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    conv_e = ConvAE(latent_dim=ldim, channels=conv_blocks, kernel=k)
-    conv_e.to(device)
-
-    classifier = ClassificationHead(input_dim=ldim, hidden_dim=hdim, num_classes=4)
+    classifier = ConvClassifier(input_shape=input_shape, latent_dim=ldim, channels=conv_blocks, hidden_dim=hdim, kernel=k, num_classes=4)
     classifier.to(device)
 
-    # initialise and test model architecture with forward pass
+    # test model architecture with forward pass
     try:
         with torch.no_grad():
-            sample_x, sample_y = frames_trainset.__getitem__(0)[0].unsqueeze(0).to(device), frames_trainset.__getitem__(0)[1].to(device)
-            sample_encoding = conv_e(sample_x)
-            sample_classification = classifier(sample_encoding)
+            # unsqueeze adds batch dimension to (C, W, H) and (num_classes) tensors
+            sample_x, sample_y = next(iter(frames_trainloader))[0].to(device), next(iter(frames_trainloader))[1].to(device)
+            sample_classification = classifier(sample_x)
 
             # compares predicted and ground truth distributions
             loss = F.cross_entropy(sample_classification, sample_y)
@@ -111,13 +109,13 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
 
 
     # save config file
-    config['parameters'] = utils.num_parameters(conv_e)
+    config['parameters'] = utils.num_parameters(classifier)
     with open(model_filepath+model_name+'.json', 'w') as file:
         json.dump(config, file, indent=4)
 
     # check for existing state dicts
     if f'{model_name}.pth' in os.listdir(model_filepath):
-        conv_e.load_state_dict(torch.load(model_filepath+model_name+'.pth'))
+        classifier.load_state_dict(torch.load(model_filepath+model_name+'.pth'))
         print(f'Loaded state dict for {model_name}')
     else:
         print(f'No saved weights found for {model_name} in {model_filepath}')
@@ -145,7 +143,7 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
     patience = 20
     best_val_loss = float('inf')
     epochs_without_improvement = 0
-    optimizer = optim.Adam(conv_e.parameters(), lr=1e-2)
+    optimizer = optim.Adam(classifier.parameters(), lr=1e-2)
 
     step_lr = StepLR(optimizer, step_size=40, gamma=0.1)
     cos_lr = CosineAnnealingLR(optimizer, T_max=epochs//10, eta_min=0)
@@ -161,7 +159,6 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
         embeddings = []
         labels = []
 
-        conv_e.train()
         classifier.train()
         train_loss = 0.0
         for data, target in tqdm(frames_trainloader, desc=f"Epoch {e+1}/{epochs} [Training]", leave=False):
@@ -169,8 +166,8 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
             target = target.to(device)
 
             optimizer.zero_grad()
-            encoded = conv_e.encode(data)
-            classification = classifier(encoded)
+            encoded = classifier.encode(data)
+            classification = classifier.classify(encoded)
             loss = loss_function(classification, target.float())
             loss.backward()
             optimizer.step()
@@ -190,7 +187,7 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
         
         # log activation data at each re-initialization
         if e == 0:
-            for name, param in conv_e.named_parameters():
+            for name, param in classifier.named_parameters():
                 if param.grad is not None:
 
                     # log parameter update to parameter magnitude ratio
@@ -213,15 +210,13 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
                 global_step=global_step+e
             )
 
-        conv_e.eval()
         classifier.eval()
         val_loss = 0.0
         with torch.no_grad():
             for data, target in tqdm(frames_trainloader, desc=f"Epoch {e+1}/{epochs} [Validation]", leave=False):
                 data = data.to(device)
                 target = target.to(device)
-                encoded = conv_e.encode(data)
-                classification = classifier(encoded)
+                classification = classifier(data)
                 loss = loss_function(classification, target.float())
 
                 val_loss += loss.item()
@@ -249,7 +244,7 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
         #     scheduler = cos_lr
 
         if e % 5 == 0:
-            torch.save(conv_e.state_dict(), model_filepath + model_name + '.pth')
+            torch.save(classifier.state_dict(), model_filepath + model_name + '.pth')
             loss_data = pd.DataFrame(log)
             loss_data.to_csv(model_filepath+model_name+'.csv', index=False)
 
@@ -267,7 +262,6 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
             #     break
 
     # test model
-    conv_e.eval()
     classifier.eval()
     test_loss = 0.0
     truepos = 0.0
@@ -275,8 +269,7 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
         for data, target in tqdm(frames_trainloader, desc=f"Epoch {e+1}/{epochs} [Testing]", leave=False):
             data = data.to(device)
             target = target.to(device)
-            encoded = conv_e.encode(data)
-            classification = classifier(encoded)
+            classification = classifier(data)
             loss = loss_function(classification, target.float())
 
             if torch.argmax(classification) == torch.argmax(target):
@@ -290,7 +283,7 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
 
 
     # save model weights 
-    torch.save(conv_e.state_dict(), model_filepath + model_name + '.pth')
+    torch.save(classifier.state_dict(), model_filepath + model_name + '.pth')
     loss_data = pd.DataFrame(log)
     loss_data.to_csv(model_filepath+model_name+'.csv', index=False)
 
