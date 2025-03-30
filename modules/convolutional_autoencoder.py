@@ -16,14 +16,10 @@ class DebugLayer(nn.Module):
         return x
 
 class ConvAE(nn.Module):
-    def __init__(self, latent_dim: int, channels: list, kernel: tuple = (3, 3)):
+    def __init__(self, input_shape: tuple, latent_dim: int, channels: list, kernel: tuple = (3, 3)):
         super().__init__()
 
         self.log_stats = False
-        
-        # only accept odd kernel sizes to preserve tensor shape with padding
-        # if any(d % 2 == 0 for d in kernel):
-        #     raise ValueError('Only odd kernel sizes accepted')
         
         # kernel size and padding
         self.k = kernel
@@ -34,23 +30,34 @@ class ConvAE(nn.Module):
         self.shapes = []
         
         # encoder blocks
+        w, h = input_shape
         self.encoders = nn.ModuleList()
         for i in range(len(channels) - 1):
             self.encoders.append(self._encoder_block(channels[i], channels[i+1]))
+            w, h = self._wh_out(w), self._wh_out(h)
 
-        # latent space dynamically initialised on first forward pass
-        self.latent_dim = latent_dim
         self.flatten = nn.Flatten(1, -1)
-
-        self.latent_shape = None
-        self.recon_shape = None
-        self.bn = None
-        self.fc = None
-
+        self.bn = nn.Sequential(
+            nn.Linear(channels[-1]*w*h, latent_dim),
+            nn.BatchNorm1d(latent_dim),
+            nn.ReLU()
+            )
+        
         # decoder blocks
+        self.fc = nn.Sequential(
+            nn.Linear(latent_dim, channels[-1]*w*h),
+            nn.BatchNorm1d(channels[-1]*w*h),
+            nn.ReLU()
+            )
+        self.recon_shape = None
+
         self.decoders = nn.ModuleList()
         for i in range(len(channels) - 1, 0, -1):
             self.decoders.append(self._decoder_block(channels[i], channels[i-1]))
+
+    def _wh_out(self, whin, dilation=1, kernel_size=2, stride=2):
+        whout = int((whin-dilation*(kernel_size-1)-1)/stride)+1
+        return whout
 
     def _encoder_block(self, cin, cout):
         return nn.Sequential(
@@ -82,23 +89,9 @@ class ConvAE(nn.Module):
             x = encoder(x)
             #print(f'----> {x.shape[-3:]}')
         self.recon_shape = x.shape
-        #print('ABOVE TENSOR SHAPE NEEDS TO BE RECONSTRUCTED')
+        #NOTE('ABOVE TENSOR SHAPE NEEDS TO BE RECONSTRUCTED')
         x = self.flatten(x)
         #print(f'Encoded tensor flattened to shape {x.shape}')
-
-        if self.latent_shape is None:
-            self.latent_shape = x.shape[-1]
-            #print(f"Setting latent shape dynamically: {self.latent_shape}")
-            self.bn = nn.Sequential(
-                nn.Linear(self.latent_shape, self.latent_dim),
-                nn.LayerNorm(self.latent_dim),
-                nn.ReLU()
-                ).to(x.device)
-            self.fc = nn.Sequential(
-                nn.Linear(self.latent_dim, self.latent_shape),
-                nn.LayerNorm(self.latent_shape),
-                nn.ReLU()
-                ).to(x.device)
 
         x = self.bn(x)
         #print(f'Latent representation tensor shape: {x.shape}')
@@ -108,7 +101,7 @@ class ConvAE(nn.Module):
         x = self.fc(x)
         #print(f'Tensor shape output of fully connected layer {x.shape}')
         try:
-            x = x.view(x.size(0), self.decoders[0][0].in_channels, self.recon_shape[-2], self.recon_shape[-1])
+            x = x.view(x.size(0), self.recon_shape[-3], self.recon_shape[-2], self.recon_shape[-1])
         except Exception as e:
             print(f'''{e}: .view() is hardcoded :( \n 
                   The latent representation needs to be reconstructed to the last tensor shape before the flatten operation. 
@@ -133,13 +126,13 @@ if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     # dimensionality of latent representation
-    dim=2084
+    dim=32
 
     # each pair represents the number of input and output channels for one convolution block
-    c = [1, 64, 128, 256, 512]
+    c = [1, 8, 16]
 
     # initialize model 
-    conv_ae = ConvAE(latent_dim=dim, channels=c)
+    conv_ae = ConvAE(input_shape=(30, 78), latent_dim=dim, channels=c)
 
     # move the model and its params to device
     conv_ae.to(device)
@@ -168,6 +161,6 @@ if __name__ == "__main__":
         latent_re.shape
     )
 
-    print(
-        output
-    )
+    # print(
+    #     output
+    # )

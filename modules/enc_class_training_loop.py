@@ -147,7 +147,7 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
     epochs_without_improvement = 0
     optimizer = optim.Adam(conv_e.parameters(), lr=1e-2)
 
-    step_lr = StepLR(optimizer, step_size=30, gamma=0.1)
+    step_lr = StepLR(optimizer, step_size=40, gamma=0.1)
     cos_lr = CosineAnnealingLR(optimizer, T_max=epochs//10, eta_min=0)
 
     scheduler = step_lr
