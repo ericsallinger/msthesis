@@ -74,7 +74,7 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath, batch_size=64, ):
     conv_ae = ConvAE(latent_dim=ldim, channels=conv_blocks, kernel=k)
     conv_ae.to(device)
 
-    # initialise and test model architecture with forward pass
+    # test model architecture with forward pass
     try:
         with torch.no_grad():
             sample_input = frames_trainset.__getitem__(0)[0].unsqueeze(0).to(device)
@@ -226,11 +226,11 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath, batch_size=64, ):
         else:
             epochs_without_improvement += 1
 
-        if epochs_without_improvement >= patience:
-            epochs_without_improvement = 0
-            best_val_loss = 0.0
-            print(f'Plateaued at {e+1}, switching to cosine annealing ')
-            scheduler = cos_lr
+        # if epochs_without_improvement >= patience:
+        #     epochs_without_improvement = 0
+        #     best_val_loss = 0.0
+        #     print(f'Plateaued at {e+1}, switching to cosine annealing ')
+        #     scheduler = cos_lr
 
         if e % 5 == 0:
             torch.save(conv_ae.state_dict(), model_filepath + model_name + '.pth')
@@ -238,6 +238,17 @@ def train_and_save_conv_ae(config, num_epochs, save_filepath, batch_size=64, ):
             loss_data.to_csv(model_filepath+model_name+'.csv', index=False)
 
             writer.flush()
+
+            # past_train_loss = loss_data['Training Loss'][-patience].values
+            # past_val_loss = loss_data['Validation Loss'][-patience:].values
+            # local_x = np.arange(len(past_train_loss))
+
+            # train_grad = np.gradient(past_train_loss, local_x)
+            # val_grad = np.gradient(past_val_loss, local_x)
+
+            # if np.mean(train_grad)/np.mean(val_grad) > 2:
+            #     print(f'Potential overfitting detected at epoch {e}. Breaking off training')
+            #     break
 
     # save model weights 
     torch.save(conv_ae.state_dict(), model_filepath + model_name + '.pth')

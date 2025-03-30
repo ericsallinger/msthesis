@@ -21,10 +21,8 @@ class ConvAE(nn.Module):
 
         self.log_stats = False
         
-        # kernel size and padding
+        # kernel size
         self.k = kernel
-        self.height_pad = kernel[0]//2
-        self.width_pad = kernel[1]//2
 
         # track shapes for upsampling
         self.shapes = []
@@ -61,10 +59,10 @@ class ConvAE(nn.Module):
 
     def _encoder_block(self, cin, cout):
         return nn.Sequential(
-            nn.Conv2d(cin, cout, kernel_size=self.k, padding=(self.height_pad, self.width_pad)),
+            nn.Conv2d(cin, cout, kernel_size=self.k, padding='same'),
             nn.BatchNorm2d(cout),
             nn.ReLU(),
-            nn.Conv2d(cout, cout, kernel_size=self.k, padding=(self.height_pad, self.width_pad)),
+            nn.Conv2d(cout, cout, kernel_size=self.k, padding='same'),
             nn.BatchNorm2d(cout),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2),
@@ -72,10 +70,10 @@ class ConvAE(nn.Module):
 
     def _decoder_block(self, cin, cout):
         return nn.Sequential(
-            nn.Conv2d(cin, cin, kernel_size=self.k, padding=(self.height_pad, self.width_pad)),
+            nn.Conv2d(cin, cin, kernel_size=self.k, padding='same'),
             nn.BatchNorm2d(cin),
             nn.ReLU(),
-            nn.Conv2d(cin, cout, kernel_size=self.k, padding=(self.height_pad, self.width_pad)),
+            nn.Conv2d(cin, cout, kernel_size=self.k, padding='same'),
             nn.BatchNorm2d(cout),
             nn.ReLU(),
         )

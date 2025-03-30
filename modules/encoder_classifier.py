@@ -36,8 +36,6 @@ class ConvClassifier(nn.Module):
             self.encoders.append(self._encoder_block(channels[i], channels[i+1]))
             h, w = self._wh_out(h), self._wh_out(w)
 
-        print(f'EXPECTED HW: {h, w}')
-
         self.flatten = nn.Flatten(1, -1)
         self.bn = nn.Sequential(
             nn.Linear(channels[-1]*w*h, latent_dim),
