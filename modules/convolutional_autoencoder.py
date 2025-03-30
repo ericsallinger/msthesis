@@ -6,6 +6,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
+# TODO: fix lazy module init, swtich from upsample to deconvolution
+
 class DebugLayer(nn.Module):
     def __init__(self):
         super().__init__()
