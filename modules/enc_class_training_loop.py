@@ -15,12 +15,10 @@ from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 
 # modules directory
-from frame_dataloader_heavy import WorkloadFrame
 from encoder_classifier import ConvClassifier
 import utils
 
-
-def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size=64):
+def train_and_save_conv_classifier(config, num_epochs, save_filepath, dataset, batch_size=64):
     """
     Trains a convolutional autoencoder model of given parameters with:
         initial lr = 0.01
@@ -43,22 +41,7 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
     b_size = batch_size
     n_workers = utils.optimal_num_workers()
 
-    # directory to .mat files
-    if __name__ == '__main__':
-        dir = 'files'
-    else:
-        dir='..\\files'
-
-    #  file group: 'phys', 'cog', or 'tot'
-    group='phys'
-
-    # signal channel to resample to: 'temp', 'hrv, 'hr', 'hbo', 'eda'
-    resample='temp'
-
-    # size of sliding window relative to shortest signal length; always 50% overlap between windows
-    context_length=0.5
-
-    frames = WorkloadFrame(dir=dir, group=group, resample=resample, context_length=context_length)
+    frames = dataset
 
     # split 'frames' dataset into train, val, and test
     g = torch.Generator().manual_seed(7)
@@ -186,8 +169,8 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
 
         writer.add_scalar('Learning Rate', scheduler.get_last_lr()[0], global_step+e)
         
-        # log activation data at each re-initialization
-        if e == 0:
+        # log activation data periodically
+        if e % 5 == 0:
             for name, param in classifier.named_parameters():
                 if param.grad is not None:
 
@@ -256,7 +239,7 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, batch_size
 
             writer.flush()
 
-            # past_train_loss = loss_data['Training Loss'][-patience].values
+            # past_train_loss = loss_data['Training Loss'][-patience:].values
             # past_val_loss = loss_data['Validation Loss'][-patience:].values
             # local_x = np.arange(len(past_train_loss))
 
