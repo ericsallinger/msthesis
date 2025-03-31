@@ -23,10 +23,8 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, dataset, b
     Trains a convolutional autoencoder model of given parameters with:
         initial lr = 0.01
         optimizer = adam
-        lr scheduler = steplr
-    until loss decrease plateaus, at which point it switches to 
-        cosine annealing scheduling 
-    until loss plateaus again or validation loss increaaases
+        lr scheduler = steplr or reduce on plateau or cosine annealing
+    until loss plateaus again or validation loss increaaases (determined by training heuristics)
     """
     
     ldim=config['latent_dim']
@@ -61,6 +59,8 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, dataset, b
     classifier = ConvClassifier(input_shape=input_shape, latent_dim=ldim, channels=conv_blocks, hidden_dim=hdim, kernel=k, num_classes=4)
     classifier.to(device)
 
+    criterion = nn.CrossEntropyLoss()
+
     # test model architecture with forward pass
     try:
         with torch.no_grad():
@@ -69,15 +69,13 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, dataset, b
             sample_classification = classifier(sample_x)
 
             # compares predicted and ground truth distributions
-            loss = F.cross_entropy(sample_classification, sample_y.float())
+            loss = criterion(sample_classification, sample_y.float())
 
             print(f'Modell initialised. Shapes: \n {sample_x.shape} {sample_y.shape} {loss.item()}')
 
     except Exception as e:
         print(f'Exception occured: \n {e} \n Possibly caused by invalid parameters')
 
-    def loss_function(y_hat, y):
-        return F.cross_entropy(y_hat, y)
 
     # ------------ HANDLE METADATA ----------------------
 
@@ -135,7 +133,6 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, dataset, b
     scheduler = reduce_on_plateau
 
     # ---------------- TRAINING LOOP -------------------
-    evals = len(frames_trainloader)
 
     for e in range(epochs):
 
@@ -152,7 +149,7 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, dataset, b
             optimizer.zero_grad()
             encoded = classifier.encode(data)
             classification = classifier.classify(encoded)
-            loss = loss_function(classification, target.float())
+            loss = criterion(classification, target.float())
             loss.backward()
             optimizer.step()
 
@@ -202,7 +199,7 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, dataset, b
                 data = data.to(device)
                 target = target.to(device)
                 classification = classifier(data)
-                loss = loss_function(classification, target.float())
+                loss = criterion(classification, target.float())
 
                 if torch.argmax(classification) == torch.argmax(target):
                     truepos += 1
@@ -212,13 +209,13 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, dataset, b
     
 
         # average losses
-        train_loss /= evals
-        val_loss /= evals
-        accuracy = truepos / evals
+        train_loss /= len(frames_trainloader)
+        val_loss /= len(frames_valloader)
+        accuracy = truepos / len(frames_valloader)
 
         #print(f"Epoch {e+1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
 
-        log.append({'Epoch':e+1, 'Training Loss':round(train_loss, 4), 'Validation Loss':round(val_loss, 4), 'Learning Rate':scheduler.get_last_lr()[0]})
+        log.append({'Epoch':e+1, 'Training Loss':round(train_loss, 4), 'Validation Loss':round(val_loss, 4), 'Accuracy':accuracy, 'Learning Rate':scheduler.get_last_lr()[0]})
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss

@@ -48,8 +48,7 @@ class ConvClassifier(nn.Module):
             nn.Linear(latent_dim, hidden_dim),
             nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, num_classes),
-            nn.Softmax(dim=1)
+            nn.Linear(hidden_dim, num_classes)
         )
     
     def _wh_out(self, win, dilation=1, kernel_size=2, stride=2):
