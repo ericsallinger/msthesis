@@ -71,7 +71,7 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, dataset, b
             # compares predicted and ground truth distributions
             loss = F.cross_entropy(sample_classification, sample_y.float())
 
-            print(f'Modell initialised. Shapes: \n {sample_x.shape} {sample_y} {loss.item()}')
+            print(f'Modell initialised. Shapes: \n {sample_x.shape} {sample_y.shape} {loss.item()}')
 
     except Exception as e:
         print(f'Exception occured: \n {e} \n Possibly caused by invalid parameters')
