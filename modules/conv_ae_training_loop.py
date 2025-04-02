@@ -18,8 +18,7 @@ from frame_dataloader_heavy import WorkloadFrame
 from convolutional_autoencoder import ConvAE
 import utils
 
-
-def train_and_save_conv_ae(config, num_epochs, save_filepath, batch_size=64, ):
+def train_and_save_conv_ae(config, num_epochs, save_filepath, batch_size=64):
     """
     Trains a convolutional autoencoder model of given parameters with:
         initial lr = 0.01

@@ -21,7 +21,6 @@ import utils
 class ConvClassifier(nn.Module):
     def __init__(self, input_shape: tuple, latent_dim: int, channels: list, hidden_dim: int, kernel: tuple = (3, 3), num_classes=4):
         super().__init__()
-        self.log_stats = False
         
         # kernel size and padding
         self.k = kernel
@@ -102,10 +101,10 @@ if __name__ == "__main__":
     hdim = 16
 
     # each pair represents the number of input and output channels for one convolution block
-    c = [1,16]
+    c = [1,8]
 
     # initialize model 
-    conv_classifier = ConvClassifier(input_shape=(129, 5), latent_dim=ldim, channels=c, hidden_dim=hdim, kernel=(3, 3))
+    conv_classifier = ConvClassifier(input_shape=(129, 5), latent_dim=ldim, channels=c, hidden_dim=hdim, kernel=(1, 4))
 
     # move the model and its params to device
     conv_classifier.to(device)
