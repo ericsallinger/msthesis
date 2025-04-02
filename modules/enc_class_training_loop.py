@@ -16,12 +16,12 @@ from torch.utils.tensorboard import SummaryWriter
 
 # modules directory
 from encoder_classifier import ConvClassifier
+from frame_dataloader_heavy import WorkloadFrame
 import utils
 
-def train_and_save_conv_classifier(config, num_epochs, save_filepath, dataset, batch_size=64):
+def train_and_save_conv_classifier(config, num_epochs, save_filepath, dataset, batch_size=64, initlr=1e-3):
     """
     Trains a convolutional autoencoder model of given parameters with:
-        initial lr = 0.01
         optimizer = adam
         lr scheduler = steplr or reduce on plateau or cosine annealing
     until loss plateaus again or validation loss increaaases (determined by training heuristics)
@@ -124,7 +124,7 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, dataset, b
     patience = 20
     best_val_loss = float('inf')
     epochs_without_improvement = 0
-    optimizer = optim.Adam(classifier.parameters(), lr=1e-2)
+    optimizer = optim.Adam(classifier.parameters(), lr=initlr)
 
     reduce_on_plateau = ReduceLROnPlateau(optimizer, cooldown=10, min_lr=1e-5)
     # step_lr = StepLR(optimizer, step_size=40, gamma=0.1)
@@ -162,8 +162,6 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, dataset, b
                 # (b_size, num_classes) for each minibatch
                 labels.append(target)
 
-        scheduler.step(train_loss)
-
         writer.add_scalar('Learning Rate', scheduler.get_last_lr()[0], global_step+e)
         
         # log activation data periodically
@@ -194,6 +192,7 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, dataset, b
         classifier.eval()
         val_loss = 0.0
         truepos = 0.0
+        total_evals = 0.0
         with torch.no_grad():
             for data, target in tqdm(frames_valloader, desc=f"Epoch {e+1}/{epochs} [Validation]", leave=False):
                 data = data.to(device)
@@ -201,8 +200,8 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, dataset, b
                 classification = classifier(data)
                 loss = criterion(classification, target.float())
 
-                if torch.argmax(classification) == torch.argmax(target):
-                    truepos += 1
+                truepos += torch.sum(torch.argmax(F.softmax(classification, dim=1), dim=1) == torch.argmax(target, dim=1))
+                total_evals += classification.shape[0]
 
                 val_loss += loss.item()
                 writer.add_scalar("Loss/Validation", loss.item(), global_step+e)
@@ -211,7 +210,9 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, dataset, b
         # average losses
         train_loss /= len(frames_trainloader)
         val_loss /= len(frames_valloader)
-        accuracy = truepos / len(frames_valloader)
+        accuracy = truepos / total_evals
+
+        scheduler.step(val_loss)
 
         #print(f"Epoch {e+1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
 
@@ -264,13 +265,24 @@ if  __name__ == '__main__':
     # run different configs
     # tensor from dataloader has shape (frame_length, num_channels). Padding applied
     configs = [
-        {'latent_dim': 32, 'conv_blocks': [1, 16], 'hidden_dim':16, 'kernel': (3, 2), 'id': 'TEST'}
+        {'latent_dim':24, 'conv_blocks':[1, 4, 8], 'hidden_dim':24, 'kernel':(10, 2), 'id':'TEST'}
     ]
+    
+    file_dir='files'
+    #  file group: 'phys', 'cog', or 'tot'
+    group='phys'
+    # signal channel to resample to: 'temp', 'hrv, 'hr', 'hbo', 'eda'
+    resample='temp'
+    # size of sliding window relative to shortest signal length; always 50% overlap between windows
+    context_length=0.5
+    frames = WorkloadFrame(dir=file_dir, group=group, resample=resample, context_length=context_length)
 
     save_filepath = "saved_models\\classifier\\TESTS\\"
-    training_epochs = 1
+    training_epochs = 2
 
+    test_accuracies = []
     for config in configs:
-        train_and_save_conv_classifier(config=config, num_epochs=training_epochs, save_filepath=save_filepath)
-
+        acc = train_and_save_conv_classifier(config=config, num_epochs=training_epochs, save_filepath=save_filepath, dataset=frames)
+        test_accuracies.append(acc)
+    print(acc)
     # then run: %tensorboard --logdir=os.path.join(model_filepath, "tensorboard_logs", model_name)
