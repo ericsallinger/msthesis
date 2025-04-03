@@ -3,6 +3,7 @@ import os
 import pandas as pd
 import json
 import numpy as np
+import sys
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -37,7 +38,8 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, dataset, b
 
     # retrieve 1-second frames from csv 
     b_size = batch_size
-    n_workers = utils.optimal_num_workers()
+    n_workers = 0 if 'ipykernel' in sys.modules else utils.optimal_num_workers()
+    p_workers = ('ipykernel' not in sys.modules)
 
     frames = dataset
 
@@ -46,11 +48,14 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, dataset, b
 
     frames_trainset, frames_valset, frames_testset = random_split(frames, [0.8, 0.1, 0.1], generator=g)
 
-    frames_trainloader = DataLoader(frames_trainset, batch_size=b_size, num_workers=n_workers,pin_memory=torch.cuda.is_available(),persistent_workers=True, prefetch_factor=4)
-    frames_valloader = DataLoader(frames_valset, batch_size=b_size, num_workers=n_workers,pin_memory=torch.cuda.is_available(),persistent_workers=True, prefetch_factor=4)
-    frames_testloader = DataLoader(frames_testset, batch_size=b_size, num_workers=n_workers,pin_memory=torch.cuda.is_available(),persistent_workers=True, prefetch_factor=4)
+    frames_trainloader = DataLoader(frames_trainset, batch_size=b_size, pin_memory=torch.cuda.is_available(),persistent_workers=p_workers, num_workers=n_workers)
+    frames_valloader = DataLoader(frames_valset, batch_size=b_size, pin_memory=torch.cuda.is_available(), persistent_workers=p_workers, num_workers=n_workers)
+    frames_testloader = DataLoader(frames_testset, batch_size=b_size, pin_memory=torch.cuda.is_available(),persistent_workers=p_workers, num_workers=n_workers)
 
     input_shape = tuple(frames_trainset.__getitem__(0)[0].shape[-2:])
+
+    if len(frames_trainloader) == 0 or len(frames_valloader) == 0:
+        raise ValueError("DataLoader is empty! Check dataset loading.")
 
     # ---------- LOAD MODEL ARCHITECTURE -------------
 
@@ -210,7 +215,9 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, dataset, b
         # average losses
         train_loss /= len(frames_trainloader)
         val_loss /= len(frames_valloader)
-        accuracy = truepos / total_evals
+        accuracy = float(truepos / total_evals)
+
+        print(f'ACCURACY: {accuracy} TRUEPOS {truepos} EVALS {total_evals}')
 
         scheduler.step(val_loss)
 
@@ -257,7 +264,8 @@ def train_and_save_conv_classifier(config, num_epochs, save_filepath, dataset, b
     writer.close()
 
     print(f'Model trained for {e} epochs. Saved data for {model_name}')
-
+    print(f"DEBUG: truepos={truepos}, total_evals={total_evals}, accuracy={accuracy}")
+    print(f"DEBUG: train={len(frames_trainloader)}, val={len(frames_valloader)}, test={len(frames_testloader)}")
     return accuracy
 
 if  __name__ == '__main__':
@@ -278,11 +286,14 @@ if  __name__ == '__main__':
     frames = WorkloadFrame(dir=file_dir, group=group, resample=resample, context_length=context_length)
 
     save_filepath = "saved_models\\classifier\\TESTS\\"
-    training_epochs = 2
+    training_epochs = 20
 
     test_accuracies = []
     for config in configs:
         acc = train_and_save_conv_classifier(config=config, num_epochs=training_epochs, save_filepath=save_filepath, dataset=frames)
         test_accuracies.append(acc)
-    print(acc)
+        error = 1-acc
+        print(error)
+    print(test_accuracies)
+    print('Final ERROR', error)
     # then run: %tensorboard --logdir=os.path.join(model_filepath, "tensorboard_logs", model_name)
