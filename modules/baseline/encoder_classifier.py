@@ -9,6 +9,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR
+from torchvision.ops import SqueezeExcitation
 
 import csv
 from tqdm import tqdm
@@ -55,15 +56,26 @@ class ConvClassifier(nn.Module):
         return whout
 
     def _encoder_block(self, cin, cout):
-        return nn.Sequential(
-            nn.Conv2d(cin, cout, kernel_size=self.k, padding='same'),
-            nn.BatchNorm2d(cout),
-            nn.ReLU(),
-            nn.Conv2d(cout, cout, kernel_size=self.k, padding='same'),
-            nn.BatchNorm2d(cout),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-        )
+            sq_c = 2
+            if cin != 1:
+                return nn.Sequential(
+                    nn.Conv2d(cin, cout, kernel_size=self.k, padding='same'),
+                    nn.BatchNorm2d(cout),
+                    nn.ReLU(),
+                    nn.Conv2d(cout, cout, kernel_size=self.k, padding='same'),
+                    nn.BatchNorm2d(cout),
+                    nn.ReLU(),
+                    SqueezeExcitation(input_channels=cout, squeeze_channels=sq_c),
+                    nn.MaxPool2d(kernel_size=2, stride=2))
+            else:
+                return nn.Sequential(
+                    nn.Conv2d(cin, cout, kernel_size=self.k, padding='same'),
+                    nn.BatchNorm2d(cout),
+                    nn.ReLU(),
+                    nn.Conv2d(cout, cout, kernel_size=self.k, padding='same'),
+                    nn.BatchNorm2d(cout),
+                    nn.ReLU(),
+                    nn.MaxPool2d(kernel_size=2, stride=2))
 
     def encode(self, x):
         self.shapes = []

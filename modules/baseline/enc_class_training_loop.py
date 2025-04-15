@@ -16,7 +16,7 @@ from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 
 # modules directory
-from modules.baseline.encoder_classifier import ConvClassifier
+from baseline.encoder_classifier import ConvClassifier
 from frame_dataloader_heavy import WorkloadFrame
 import utils
 
