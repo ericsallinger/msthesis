@@ -19,8 +19,8 @@ from torch.utils.tensorboard import SummaryWriter
 from frame_dataloader_heavy import WorkloadFrame
 import utils
 
-class ConvClassifier(nn.Module):
-    def __init__(self, input_shape: tuple, latent_dim: int, channels: list, hidden_dim: int, kernel: tuple = (3, 3), num_classes=4):
+class Conv(nn.Module):
+    def __init__(self, input_shape: tuple, latent_dim: int, channels: list, kernel: tuple):
         super().__init__()
         
         # kernel size and padding
@@ -42,18 +42,21 @@ class ConvClassifier(nn.Module):
             nn.BatchNorm1d(latent_dim),
             nn.ReLU()
             )
-        
-        # classification head
-        self.hidden_layers = nn.Sequential(
-            nn.Linear(latent_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, num_classes)
-        )
     
     def _wh_out(self, win, dilation=1, kernel_size=2, stride=2):
         whout = int(((win-dilation*(kernel_size-1)-1)/stride)+1)
         return whout
+    
+    def train(self, mode=True):
+        super().train(mode)
+        for m in self.encoders:
+            m.train(mode)
+
+    def eval(self):
+        super().train(False)
+        for m in self.encoders:
+            m.train(False)
+
 
     def _encoder_block(self, cin, cout):
             sq_c = 2
@@ -91,14 +94,6 @@ class ConvClassifier(nn.Module):
         x = self.bn(x)
         #print(f'Latent representation tensor shape: {x.shape}')
         return x
-    
-    def classify(self, x):
-        return self.hidden_layers(x)
-    
-    def forward(self, x):
-        l_x = self.encode(x)
-        classification = self.classify(l_x)
-        return classification
     
 
 if __name__ == "__main__":

@@ -1,9 +1,11 @@
 # computes the following stats: mean, std, slope, skewness, kurtosis
 # candidate features: hr_mean, hr_std, hr_skewness, hr_kurtosis, hr_slope, hbo_std, hbo_slope, hbo_skewness, eda_mean, eda_std, eda_skewness, hrv_mean, hrv_std, hrv_skewness, temp_slope
 import torch
+import torch.nn as nn
 
-class StatFeatures:
+class StatFeatures(nn.Module):
     def __init__(self, cand_features=None):
+        super().__init__()
         self.cand_features = cand_features
 
     def compute(self, signal):
@@ -29,7 +31,7 @@ class StatFeatures:
         slope = torch.mean(torch.gradient(signal, dim=dim, spacing=1)[0], dim=dim)
 
         diffs = signal - mean
-        zscores = diffs / std
+        zscores = (diffs / (std + 1e-6))
 
         mean = mean.squeeze(dim)
         std = std.squeeze(dim)
@@ -47,7 +49,7 @@ class StatFeatures:
             elif len(signal.shape) == 4:
                 stat_features = torch.stack([stats[:, :, channel[s.split('_')[0]], stat[s.split('_')[1]]] for s in self.cand_features], dim=-1)
         else:
-            stat_features = stats.view(-1)
+            stat_features = stats
 
         return stat_features
     
